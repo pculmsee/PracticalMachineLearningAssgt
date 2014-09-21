@@ -1,0 +1,87 @@
+---
+title: "Practical Machine Learning - Project 1"
+output: html_document
+---
+# Practical Machine Learning - Project 1
+
+## Synopsis
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, my goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here:[http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset). 
+
+## Data Processing
+
+```{r}
+set.seed(1234)
+#load required libraries
+library(caret)
+library(randomForest)
+```
+
+Firstly load the training and test data.
+
+```{r}
+trainDataFull <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+testData <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+
+```
+
+To allow us to cross validate the model later we split the Training data into a training and validation set.
+
+```{r}
+inTrain <- createDataPartition(trainDataFull$classe, p=0.70, list=FALSE)
+trainData <- trainDataFull[inTrain,]
+validationData <- trainDataFull[-inTrain,]
+```
+
+An initial exploration of the data shows that there are 160 fields in our dataset and a number of fields that are not likely to be relevant to predicting the outcome (classe).  We want to remove as many of the irrelevant fields as possible to simplify our model without compromising accuracy.
+
+```{r}
+dim(trainData)
+head(trainData)
+```
+
+We see from this that there are a number of columns that are unlikely to help with the modelling - eg X, user_name, cvtd_timestamp, raw_timestamp_part_1, raw_timestamp_part_2.  So we have removed these.
+
+We will also remove any columns that show near zero variance as these are also unlikely to assist in building accurate predictions.
+
+```{r}
+trainData<-trainData[,-grep("X|user_name|cvtd_timestamp|raw_timestamp_part_1|raw_timestamp_part_2", names(trainData))]
+nzv <- nearZeroVar(trainData)
+trainData<-trainData[,-nzv]
+
+```
+
+Also from the initial investigation of the data there are a number of columns that are almost all NA.  These can also be removed to reduce the complexity of the model.
+
+```{r}
+t<-colSums(is.na(trainData))
+print(t[t>0])
+trainData<-trainData[,colSums(is.na(trainData)) == 0]
+
+```
+
+
+## Model Creation
+We have chosen to create a Random Forest model to predict because of their high level of accuracy.
+
+```{r}
+modFit<-randomForest(classe~.,data = trainData, prox = TRUE , importance=TRUE)
+confusionMatrix(modFit$predicted, trainData$classe)
+```
+
+We see that we achieve a high level of accuracy with the confusion matrix showing in sample `r paste(round(sum(modFit$predicted== trainData$classe)/length(trainData$classe)*100,1),'%',sep='')` accuracy.
+
+## Cross-validation
+
+Next we used our model to predict new values within the test set that we created for cross-validation.
+
+```{r}
+predcv<-predict(modFit, newdata=validationData)
+confusionMatrix(predcv, validationData$classe)
+predRight<-sum(predcv== validationData$classe)
+predWrong<-length(validationData$classe)-sum(predcv== validationData$classe)
+```
+
+The confusion matrix shows the predictions from our model were extremely accurate with only `r  predWrong` misses out of the `r length(validationData$classe)` observations and an accuracy of `r paste(round(sum(predcv== validationData$classe)/length(validationData$classe)*100,1),'%',sep='')`.  This gives us an expected out of sample error rate of `r paste(round(predWrong/length(validationData$classe)*100,1),'%',sep='')`.
+
+
